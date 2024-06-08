@@ -1,0 +1,84 @@
+import tweepy
+import pandas as pd
+from textblob import TextBlob
+import matplotlib.pyplot as plt
+import seaborn as sns
+import nltk
+nltk.download('vader_lexicon')
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+
+# Twitter API credentials
+API_KEY = 'YOUR_API_KEY'
+API_SECRET_KEY = 'YOUR_API_SECRET_KEY'
+ACCESS_TOKEN = 'YOUR_ACCESS_TOKEN'
+ACCESS_TOKEN_SECRET = 'YOUR_ACCESS_TOKEN_SECRET'
+
+# Authenticate to Twitter
+auth = tweepy.OAuthHandler(API_KEY, API_SECRET_KEY)
+auth.set_access_token(ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+api = tweepy.API(auth)
+
+# Collect Twitter data
+def fetch_tweets(query, count=100):
+    try:
+        tweets = api.search(q=query, count=count, lang='en', tweet_mode='extended')
+        return [{'text': tweet.full_text, 'created_at': tweet.created_at} for tweet in tweets]
+    except tweepy.TweepError as e:
+        print(f"Error: {str(e)}")
+        return []
+
+# Example query to fetch tweets
+query = "Python programming"
+tweets_data = fetch_tweets(query, count=200)
+
+# Convert to DataFrame
+tweets_df = pd.DataFrame(tweets_data)
+
+# Sentiment analysis using TextBlob
+def get_textblob_sentiment(text):
+    analysis = TextBlob(text)
+    return analysis.sentiment.polarity
+
+tweets_df['textblob_polarity'] = tweets_df['text'].apply(get_textblob_sentiment)
+
+# Sentiment analysis using VADER
+sia = SentimentIntensityAnalyzer()
+
+def get_vader_sentiment(text):
+    return sia.polarity_scores(text)['compound']
+
+tweets_df['vader_polarity'] = tweets_df['text'].apply(get_vader_sentiment)
+
+# Define overall sentiment
+def classify_sentiment(polarity):
+    if polarity > 0:
+        return 'positive'
+    elif polarity < 0:
+        return 'negative'
+    else:
+        return 'neutral'
+
+tweets_df['sentiment'] = tweets_df['textblob_polarity'].apply(classify_sentiment)
+
+# Visualize the results
+plt.figure(figsize=(10, 6))
+sns.countplot(x='sentiment', data=tweets_df, palette=['red', 'blue', 'green'])
+plt.title('Sentiment Analysis of Tweets')
+plt.xlabel('Sentiment')
+plt.ylabel('Count')
+plt.show()
+
+# Time-series analysis
+tweets_df['created_at'] = pd.to_datetime(tweets_df['created_at'])
+tweets_df.set_index('created_at', inplace=True)
+tweets_df = tweets_df.resample('D').mean()  # Resample by day
+
+# Plot time-series sentiment
+plt.figure(figsize=(14, 7))
+tweets_df['textblob_polarity'].plot(label='TextBlob Polarity', color='blue')
+tweets_df['vader_polarity'].plot(label='VADER Polarity', color='red')
+plt.title('Daily Sentiment Polarity Over Time')
+plt.xlabel('Date')
+plt.ylabel('Polarity')
+plt.legend()
+plt.show()
